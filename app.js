@@ -302,13 +302,13 @@ function placeFilters() {
         <div class="filters">
             <input type="search" placeholder="Search places, areas, food…" value="${esc(placeFilter.q)}" oninput="setFilter('q', this.value)">
             <div class="chips">
-                <button class="fchip ${!placeFilter.city ? 'on' : ''}" onclick="setFilter('city','')">All</button>
-                ${cities.map(c => `<button class="fchip ${placeFilter.city === c ? 'on' : ''}" onclick="setFilter('city', ${esc(JSON.stringify(c))})">${esc(c)}</button>`).join('')}
-                <button class="fchip ${placeFilter.starred ? 'on' : ''}" onclick="setFilter('starred', ${!placeFilter.starred})">★ Favourites</button>
-                <select onchange="setFilter('cat', this.value)">
+                <select class="${placeFilter.cat ? 'on' : ''}" onchange="setFilter('cat', this.value)">
                     <option value="">Any type</option>
                     ${cats.map(c => `<option ${placeFilter.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
                 </select>
+                <button class="fchip ${!placeFilter.city ? 'on' : ''}" onclick="setFilter('city','')">All</button>
+                ${cities.map(c => `<button class="fchip ${placeFilter.city === c ? 'on' : ''}" onclick="setFilter('city', ${esc(JSON.stringify(c))})">${esc(c)}</button>`).join('')}
+                <button class="fchip ${placeFilter.starred ? 'on' : ''}" onclick="setFilter('starred', ${!placeFilter.starred})">★ Favourites</button>
             </div>
         </div>`;
 }

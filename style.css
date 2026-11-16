@@ -277,3 +277,4 @@ select.btn { appearance: none; padding-right: 16px; max-width: 160px; }
 .grp { grid-column: 1 / -1; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 2px; }
 .grp:first-child { margin-top: 0; }
 .grp span { font-weight: 500; }
+.chips select.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
