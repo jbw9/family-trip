@@ -284,14 +284,21 @@ function filteredPlaces() {
 }
 
 // Broad sections for the place lists; every meal type (ramen, sushi, BBQ…) falls under Food.
-const GROUPS = ['Matcha', 'Food', 'Coffee', 'Dessert', 'Places'];
+const GROUPS = ['Coffee', 'Dessert', 'Food', 'Matcha', 'Places'];
+const GROUP_EMOJI = { Coffee: '☕', Dessert: '🍰', Food: '🍜', Matcha: '🍵', Places: '⛩️' };
 const groupOf = p => /matcha/i.test(p.category) ? 'Matcha' : GROUPS.includes(p.category) ? p.category : 'Food';
 
+// Split by city (in trip order) when several are showing, then by section.
 function grouped(list, row) {
     if (!list.length) return '<div class="empty small">No places match.</div>';
-    return GROUPS.map(g => {
-        const inG = list.filter(p => groupOf(p) === g);
-        return inG.length ? `<h3 class="grp">${g} <span>${inG.length}</span></h3>${inG.map(row).join('')}` : '';
+    const firstDay = c => { const i = S.days.findIndex(d => d.city.includes(c)); return i < 0 ? 999 : i; };
+    const cities = [...new Set(list.map(p => p.city))].sort((a, b) => firstDay(a) - firstDay(b));
+    return cities.map(c => {
+        const inC = list.filter(p => p.city === c);
+        return (cities.length > 1 ? `<h2 class="cityhead">${esc(c || 'Other')}</h2>` : '') + GROUPS.map(g => {
+            const inG = inC.filter(p => groupOf(p) === g);
+            return inG.length ? `<h3 class="grp">${GROUP_EMOJI[g]} ${g} <span>${inG.length}</span></h3>${inG.map(row).join('')}` : '';
+        }).join('');
     }).join('');
 }
 
@@ -304,7 +311,10 @@ function placeFilters() {
             <div class="chips">
                 <select class="${placeFilter.cat ? 'on' : ''}" onchange="setFilter('cat', this.value)">
                     <option value="">Any type</option>
-                    ${cats.map(c => `<option ${placeFilter.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+                    ${GROUPS.map(g => {
+                        const inG = cats.filter(c => groupOf({ category: c }) === g);
+                        return inG.length ? `<optgroup label="${GROUP_EMOJI[g]} ${g}">${inG.map(c => `<option value="${esc(c)}" ${placeFilter.cat === c ? 'selected' : ''}>${GROUP_EMOJI[g]} ${esc(c)}</option>`).join('')}</optgroup>` : '';
+                    }).join('')}
                 </select>
                 <button class="fchip ${!placeFilter.city ? 'on' : ''}" onclick="setFilter('city','')">All</button>
                 ${cities.map(c => `<button class="fchip ${placeFilter.city === c ? 'on' : ''}" onclick="setFilter('city', ${esc(JSON.stringify(c))})">${esc(c)}</button>`).join('')}
