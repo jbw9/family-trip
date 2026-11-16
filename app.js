@@ -279,7 +279,20 @@ function filteredPlaces() {
         (!placeFilter.city || p.city === placeFilter.city) &&
         (!placeFilter.cat || p.category === placeFilter.cat) &&
         (!placeFilter.starred || p.starred) &&
-        (!q || `${p.name} ${p.area} ${p.category} ${p.notes}`.toLowerCase().includes(q)));
+        (!q || `${p.name} ${p.area} ${p.category} ${p.notes} ${p.address}`.toLowerCase().includes(q)))
+        .sort((a, b) => GROUPS.indexOf(groupOf(a)) - GROUPS.indexOf(groupOf(b)) || a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+}
+
+// Broad sections for the place lists; every meal type (ramen, sushi, BBQ…) falls under Food.
+const GROUPS = ['Matcha', 'Food', 'Coffee', 'Dessert', 'Places'];
+const groupOf = p => /matcha/i.test(p.category) ? 'Matcha' : GROUPS.includes(p.category) ? p.category : 'Food';
+
+function grouped(list, row) {
+    if (!list.length) return '<div class="empty small">No places match.</div>';
+    return GROUPS.map(g => {
+        const inG = list.filter(p => groupOf(p) === g);
+        return inG.length ? `<h3 class="grp">${g} <span>${inG.length}</span></h3>${inG.map(row).join('')}` : '';
+    }).join('');
 }
 
 function placeFilters() {
@@ -305,7 +318,7 @@ function placesView() {
     return `
         <div class="pagehead"><h1 class="page">Places</h1><button class="btn" onclick="editPlace(null)">+ Add place</button></div>
         ${placeFilters()}
-        <div id="placelist" class="places">${list.map(placeCard).join('') || '<div class="empty small">No places match.</div>'}</div>`;
+        <div id="placelist" class="places">${grouped(list, placeCard)}</div>`;
 }
 
 function placeCard(p) {
@@ -317,6 +330,7 @@ function placeCard(p) {
                 <h3>${esc(p.name)}</h3>
             </div>
             <div class="sub">${[p.category, p.area || p.city].filter(Boolean).map(esc).join(' · ')}</div>
+            ${addrLink(p)}
             ${p.notes ? `<p class="muted">${linkify(p.notes)}</p>` : ''}
             ${planned.length ? `<div class="chip ok">On ${planned.map(d => fmt(d, { day: 'numeric', month: 'short' })).join(', ')}</div>` : ''}
             <div class="actions">
@@ -329,6 +343,11 @@ function placeCard(p) {
             </div>
         </article>`;
 }
+
+// Tapping the address opens it in Maps, to check it's the right branch before adding it.
+const addrLink = p => p.address
+    ? `<a class="maddr" href="${esc(p.maps_url || mapsSearch(`${p.name}, ${p.address}`))}" target="_blank" rel="noopener">${esc(p.address)}</a>`
+    : '<span class="maddr none">No address yet</span>';
 
 // Pop-up list of saved places; Add drops one into the day and keeps the list open for more.
 function pickPlace(date) {
@@ -345,11 +364,11 @@ function pickerBody(date) {
     const on = new Set(S.items.filter(i => i.date === date).map(i => i.place_id));
     return `${placeFilters()}
         <div class="mini">
-            ${list.map(p => `
+            ${grouped(list, p => `
                 <div class="mini-row">
-                    <div><b>${p.starred ? '★ ' : ''}${esc(p.name)}</b><small>${[p.category, p.area].filter(Boolean).map(esc).join(' · ')}</small></div>
+                    <div class="mini-text"><b>${p.starred ? '★ ' : ''}${esc(p.name)}</b><small>${[p.category, p.area].filter(Boolean).map(esc).join(' · ')}</small>${addrLink(p)}</div>
                     ${on.has(p.id) ? '<span class="chip ok">Added</span>' : `<button type="button" class="btn small" onclick="addPlaceTo('${p.id}','${date}')">Add</button>`}
-                </div>`).join('') || '<div class="empty small">No places match.</div>'}
+                </div>`)}
         </div>`;
 }
 
@@ -384,7 +403,7 @@ function setFilter(k, v) {
     // Re-render just the list so the search box keeps focus while typing.
     const refocus = () => { const b = document.querySelector(picker ? '#picker input[type=search]' : '#main input[type=search]'); if (k === 'q') { b.focus(); b.setSelectionRange(v.length, v.length); } };
     if (picker) { picker.innerHTML = pickerBody(picker.dataset.date); refocus(); return; }
-    if (k === 'q') { $('#placelist').innerHTML = filteredPlaces().map(placeCard).join('') || '<div class="empty small">No places match.</div>'; return; }
+    if (k === 'q') { $('#placelist').innerHTML = grouped(filteredPlaces(), placeCard); return; }
     render();
 }
 
