@@ -122,7 +122,6 @@ function render() {
     let date = null;
     if (view === 'today') date = currentTripDate();
     if (view === 'day') date = arg;
-    renderSide(date);
     document.body.dataset.view = view;
     const main = $('#main');
     if (!S.days.length) { main.innerHTML = '<div class="empty">Loading the trip…</div>'; return; }
@@ -130,7 +129,8 @@ function render() {
     else if (view === 'bookings') main.innerHTML = bookingsView();
     else if (view === 'days') main.innerHTML = daysView();
     else main.innerHTML = dayView(date, view === 'today');
-    $('#panel').innerHTML = date ? panelView(date) : '';
+    const strip = document.querySelector('.strip'), on = strip?.querySelector('.on');
+    if (on) strip.scrollLeft = on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
     if (view === 'today') document.querySelector('.item.next')?.scrollIntoView({ block: 'center' });
 }
 
@@ -146,19 +146,13 @@ function currentTripDate() {
 
 // ---------- views ----------
 
-function renderSide(active) {
-    $('#side').innerHTML = `
-        <div class="brand">Family Trip<small>${S.days.length ? `${fmt(S.days[0].date, { day: 'numeric', month: 'short' })} – ${fmt(S.days.at(-1).date, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</small></div>
-        <a class="side-link ${route().view === 'today' ? 'on' : ''}" href="#today">Today</a>
-        <a class="side-link ${route().view === 'places' ? 'on' : ''}" href="#places">Places <span>${S.places.length}</span></a>
-        <a class="side-link ${route().view === 'bookings' ? 'on' : ''}" href="#bookings">Bookings ${S.items.some(i => i.booking_status === 'needed') ? `<b>${S.items.filter(i => i.booking_status === 'needed').length}</b>` : ''}</a>
-        <div class="side-days">
-            ${S.days.map((d, i) => `
-                <a href="#day/${d.date}" class="side-day ${d.date === active ? 'on' : ''} ${d.date === todayIso() ? 'is-today' : ''}">
-                    <span class="n">${i + 1}</span>
-                    <span><b>${fmt(d.date)}</b><small>${esc(d.city)}</small></span>
-                </a>`).join('')}
-        </div>`;
+// Scrollable row of dates above a day, for jumping around without a sidebar.
+function dayStrip(active) {
+    const t = todayIso();
+    return `<nav class="strip">${S.days.map(d => `
+        <a href="#day/${d.date}" class="${d.date === active ? 'on' : ''} ${d.date === t ? 'is-today' : ''} ${d.date < t ? 'past' : ''}">
+            <small>${fmt(d.date, { weekday: 'short' })}</small><b>${fmt(d.date, { day: 'numeric' })}</b><small>${esc(d.city.split(/[ (→]/)[0])}</small>
+        </a>`).join('')}</nav>`;
 }
 
 function dayView(date, isToday) {
@@ -178,6 +172,7 @@ function dayView(date, isToday) {
     const nextId = live ? (items.find(x => !x.done && (!x.time || x.time >= nowHM())) || items.find(x => !x.done))?.id : null;
     return `
         ${banner}
+        ${dayStrip(date)}
         <header class="dayhead">
             ${prev ? `<a class="arrow" href="#day/${prev.date}" aria-label="Previous day">‹</a>` : '<span class="arrow"></span>'}
             <div class="dh">
@@ -193,8 +188,8 @@ function dayView(date, isToday) {
             ${items.length ? items.map(x => itemCard(x, x.id === nextId)).join('') : '<div class="empty small">Nothing planned yet.</div>'}
         </section>
         <div class="addrow">
-            <button class="btn" onclick="editItem(null,'${date}')">+ Add to this day</button>
-            <a class="btn ghost only-phone" href="#places">Pick from places</a>
+            <button class="btn" onclick="pickPlace('${date}')">+ Add from places</button>
+            <button class="btn ghost" onclick="editItem(null,'${date}')">+ Add something else</button>
         </div>`;
 }
 
@@ -335,18 +330,26 @@ function placeCard(p) {
         </article>`;
 }
 
-// Laptop-only side panel next to a day: search places and drop them into the day.
-function panelView(date) {
-    const list = filteredPlaces().slice(0, 60);
-    return `
-        <h2 class="panel-h">Add a place to ${fmt(date)}</h2>
-        ${placeFilters()}
+// Pop-up list of saved places; Add drops one into the day and keeps the list open for more.
+function pickPlace(date) {
+    const city = S.days.find(d => d.date === date)?.city || '';
+    placeFilter.city = [...new Set(S.places.map(p => p.city))].find(c => c && city.includes(c)) || '';
+    placeFilter.q = '';
+    openSheet(`
+        <div class="sheet-head"><h2>Add to Day ${dayNum(date)} · ${fmt(date)}</h2><button type="button" class="link" onclick="closeSheet()">Done</button></div>
+        <div id="picker" data-date="${date}">${pickerBody(date)}</div>`);
+}
+
+function pickerBody(date) {
+    const list = filteredPlaces();
+    const on = new Set(S.items.filter(i => i.date === date).map(i => i.place_id));
+    return `${placeFilters()}
         <div class="mini">
             ${list.map(p => `
                 <div class="mini-row">
                     <div><b>${p.starred ? '★ ' : ''}${esc(p.name)}</b><small>${[p.category, p.area].filter(Boolean).map(esc).join(' · ')}</small></div>
-                    <button class="btn small" onclick="addPlaceTo('${p.id}','${date}')">Add</button>
-                </div>`).join('')}
+                    ${on.has(p.id) ? '<span class="chip ok">Added</span>' : `<button type="button" class="btn small" onclick="addPlaceTo('${p.id}','${date}')">Add</button>`}
+                </div>`).join('') || '<div class="empty small">No places match.</div>'}
         </div>`;
 }
 
@@ -377,19 +380,11 @@ function bookingsView() {
 
 function setFilter(k, v) {
     placeFilter[k] = v;
-    const { view } = route();
-    // Re-render just the lists so the search box keeps focus while typing.
-    if (k === 'q') {
-        if (view === 'places') $('#placelist').innerHTML = filteredPlaces().map(placeCard).join('') || '<div class="empty small">No places match.</div>';
-        const mini = document.querySelector('#panel .mini');
-        if (mini) {
-            const keep = document.activeElement;
-            $('#panel').innerHTML = panelView(route().arg || currentTripDate());
-            const box = $('#panel input[type=search]');
-            if (keep?.closest('#panel')) { box.focus(); box.setSelectionRange(v.length, v.length); }
-        }
-        return;
-    }
+    const picker = $('#picker');
+    // Re-render just the list so the search box keeps focus while typing.
+    const refocus = () => { const b = document.querySelector(picker ? '#picker input[type=search]' : '#main input[type=search]'); if (k === 'q') { b.focus(); b.setSelectionRange(v.length, v.length); } };
+    if (picker) { picker.innerHTML = pickerBody(picker.dataset.date); refocus(); return; }
+    if (k === 'q') { $('#placelist').innerHTML = filteredPlaces().map(placeCard).join('') || '<div class="empty small">No places match.</div>'; return; }
     render();
 }
 
@@ -413,6 +408,7 @@ function addPlaceTo(placeId, date) {
         booking_status: 'none', booking_time: '', party: '', confirmation: '', booking_url: '', done: false, sort,
     });
     toast(`Added to Day ${dayNum(date)}`);
+    if ($('#picker')) $('#picker').innerHTML = pickerBody(date);
 }
 
 // ---------- edit sheets ----------
@@ -422,7 +418,8 @@ function openSheet(html) {
     s.innerHTML = `<div class="sheet-bg" onclick="closeSheet()"></div><form class="sheet-card" onsubmit="event.preventDefault()">${html}</form>`;
     s.hidden = false;
     document.body.classList.add('locked');
-    s.querySelector('input,textarea')?.focus({ preventScroll: true });
+    // Don't pop the phone keyboard over the place list.
+    if (!s.querySelector('#picker')) s.querySelector('input,textarea')?.focus({ preventScroll: true });
 }
 
 function closeSheet() {
